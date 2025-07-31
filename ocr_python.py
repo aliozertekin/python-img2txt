@@ -4,47 +4,49 @@ from PIL import Image
 import easyocr
 import numpy as np
 
-# Set up
-POPPLER_PATH = r"C:/poppler/bin"  # ← change this to your Poppler /bin path
+# --- Configuration ---
+POPPLER_PATH = r"C:/poppler/bin"  # ⚠️ Change this to your Poppler bin path
 INPUT_FOLDER = "input"
 OUTPUT_FOLDER = "output"
 
+# Initialize OCR reader with Turkish language (you can change to 'en' or ['tr', 'en'] for both)
 reader = easyocr.Reader(['tr'], gpu=False)
 
-# Define your ROIs (relative to A4 @ 300dpi ~ 2480x3508)
-# Format: (label, (x1, y1, x2, y2)) -- coordinates in pixels
+# Define named regions (x1, y1, x2, y2) based on 300 DPI A4 size (2480x3508 px)
 REGIONS = [
-    ("Header",     (100,  100, 2380, 300)),     # top section
-    ("Main Info",  (100,  500, 2380, 1200)),    # middle block
-    ("Footer",     (100, 3200, 2380, 3400))     # bottom block
+    ("Header",     (100,  100, 2380, 300)),     # Top of the page
+    ("Main Info",  (100,  500, 2380, 1200)),    # Center of the page
+    ("Footer",     (100, 3200, 2380, 3400))     # Bottom of the page
 ]
 
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
+# Process all PDF files in the input folder
 for filename in os.listdir(INPUT_FOLDER):
     if filename.lower().endswith(".pdf"):
         filepath = os.path.join(INPUT_FOLDER, filename)
         base_name = os.path.splitext(filename)[0]
 
-        print(f"[INFO] Processing {filename}...")
+        print(f"[INFO] Processing '{filename}'...")
 
-        # Convert PDF to images (one per page)
+        # Convert PDF pages to images
         pages = convert_from_path(filepath, dpi=300, poppler_path=POPPLER_PATH)
+        all_text = []
 
         for i, page in enumerate(pages):
             img_np = np.array(page)
+            all_text.append(f"\n--- Page {i + 1} ---\n")
 
-            ocr_result = []
-
+            # Extract each defined region
             for label, (x1, y1, x2, y2) in REGIONS:
                 region = img_np[y1:y2, x1:x2]
                 text_lines = reader.readtext(region, detail=0, paragraph=True)
-                section_text = f"--- {label} ---\n" + "\n".join(text_lines) + "\n"
-                ocr_result.append(section_text)
+                region_text = "\n".join(text_lines).strip()
+                all_text.append(f"[{label}]\n{region_text}\n")
 
-            # Save text output per page
-            output_path = os.path.join(OUTPUT_FOLDER, f"{base_name}_page{i+1}.txt")
-            with open(output_path, "w", encoding="utf-8") as f:
-                f.write("\n".join(ocr_result))
+        # Write all text to a single output file
+        output_path = os.path.join(OUTPUT_FOLDER, f"{base_name}.txt")
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(all_text))
 
-        print(f"[DONE] Output saved in: {OUTPUT_FOLDER}/{base_name}_pageX.txt")
+        print(f"[✓] Output saved: {output_path}")
